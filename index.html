@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="jquery.min.js"></script>	
+<script src="pouchdb-3.6.0.min.js"></script>
+ <script src="http://localhost:5984/_utils/script/json2.js"></script>
+    <script src="http://localhost:5984/_utils/script/jquery.js?1.2.6"></script>
+    <script src="http://localhost:5984/_utils/script/jquery.couch.js?0.8.0"></script>
+    <script src="http://localhost:5984/_utils/script/jquery.form.js?0.9.0"></script>
+</head>
+<body>
+<div id="menu">
+<button type="button" onclick="getBib()">Get Bib</button>
+<input type="text" name="search" id="search" value="" placeholder="Enter text to search"/>
+<select id="para">
+	<option value="pub">Publication</option>
+	<option value="author">Author</option>
+	<option value="title">Title</option>
+
+</select>
+<button type="button" onclick="search()">Search</button>
+</div>
+<div id="bibtex"></div>
+<div id="att_form">
+	<form class="attachmentForm" method="post" enctype="multipart/form-data">
+      <input type="file" name="_attachments" id="_attachments" multiple="multiple" />
+      <input type="submit" class="Submit" value="Submit" />
+    </form>
+</div>
+<script>
+var data,var_id,var_rev;
+$("#att_form").hide();
+$(function() {
+        $('form.attachmentForm').submit(function(e) {
+          
+          // Prevent submit because we will use ajaxSubmit() to actually send the
+          // attachment to CouchDB.
+          e.preventDefault();
+
+
+          // Get the user supplied details
+          var input_db = "bk";
+          var input_id = var_id;
+          var input_rev = var_rev;
+         
+          // Start by trying to open a Couch Doc at the _id and _db specified
+          $.couch.db("http://localhost:5984/"+input_db).openDoc(input_id, {
+            // If found, then set the revision in the form and save
+            success: function(couchDoc) {alert(2);
+              // Defining a revision on saving over a Couch Doc that exists is required.
+              // This puts the last revision of the Couch Doc into the input#rev field
+              // so that it will be submitted using ajaxSubmit.
+              //$('.documentForm input#_rev').val(couchDoc._rev);
+               var_rev=couchDoc._rev;
+              // Submit the form with the attachment
+              $('form.attachmentForm').ajaxSubmit({
+                url: "http://localhost:5984/"+ input_db +"/"+ input_id,
+                success: function(response) {
+                  alert("Your attachment was submitted.")
+                }
+              })
+            }, // End success, we have a Doc
+            
+            // If there is no CouchDB document with that ID then we'll need to create it before we can attach a file to it.
+            error: function(status) {
+              $.couch.db(input_db).saveDoc({"_id":input_id}, {
+                success: function(couchDoc) {
+                  // Now that the Couch Doc exists, we can submit the attachment,
+                  // but before submitting we have to define the revision of the Couch
+                  // Doc so that it gets passed along in the form submit.
+                  //$('.attachmentForm input#_rev').val(couchDoc.rev);
+                  var_rev=couchDoc._rev;
+                  $('form.attachmentForm').ajaxSubmit({
+                    // Submit the form with the attachment
+                    url: "http://localhost:5984/"+ input_db +"/"+ input_id,
+                    success: function(response) {
+                      alert("Your attachment was submitted.")
+                    }
+                  })
+                }
+              })
+            } // End error, no Doc
+
+          }) // End openDoc()
+
+        }) /* End form.documentForm submit */
+      }) /* End jQuery ready */
+
+var getBib=function()
+	{
+		$.ajax({
+	    url : 'http://localhost:5984/bk/_design/ex/_view/2',//'http://localhost:5984/book'
+	    type : 'GET',
+	    dataType : "json",
+	    success : function(data1) {
+	    	console.log(data1);
+	    	data=data1;
+	    	loadBibtex();
+
+	    }
+	  });
+	};
+var loadBibtex=function()
+	{
+		/*@article{mrx05, 
+auTHor = "Mr. X", 
+Title = {Something Great}, 
+publisher = "nob" # "ody", 
+YEAR = 2005, 
+} 
+id: "16"key: "16"value: Objectauthors: Array[2]0: "Mark Burgess"1: "leen Frisch"length: 2__proto__: Array[0]publisher: "USENIX Association"source: "DBLP"title: "A System Engineer's Guide to Host Configuration and Maintenance Using Cfengine"type: "Book"year: "2007"*/
+
+		for (i=0;i<data['rows'].length;i++)
+	 	{	
+		 	var temp_obj=data.rows[i];
+		 	var bib='@'+temp_obj.key+'{publisher:"'+temp_obj['value'].publisher+',title:"'+temp_obj['value'].title+',source:"'+temp_obj['value'].source+',year:"'+temp_obj['value'].year+'",author:"';
+		 	for(y=0;y<temp_obj['value'].authors.length;y++)
+		 	{
+		 		bib=bib+temp_obj['value'].authors[y]+' # '
+		 	}
+		 	bib=bib+'}'
+		 	$("#bibtex").append(bib+"</br>");
+	 	}
+	};
+ var search=function()
+	{
+		$("#att_form").hide();
+		var search_txt=" "+$("#search").val();
+		var para=$("#para").val();
+		console.log(para,search_txt);
+		$.ajax({
+	    url : 'http://localhost:5984/bk/_design/ex/_view/'+para+'?key=\"'+encodeURIComponent(search_txt)+'\"&group=true',//'http://localhost:5984/book'
+	   	//data:{group: true},
+	   //url:'http://localhost:5984/bk/_design/ex/_view/pub?key=%22%20ACM%20Press%22&group=true',
+	    
+	    type : 'GET',
+	    dataType : "json",
+	    success : function(data1) {
+	    	console.log(data1);
+	    	for(i=0; i<data1.rows.length;i++)
+	    	{
+	    		$("#bibtex").empty();
+	    		$("#bibtex").append("<div id='div_"+i+"'>"+data1.rows[i].key+"</div>");
+	    		for(j=0;j<data1.rows[i].value.length;j++)
+	    		{
+	    			var temp_obj=data1.rows[i].value[j];
+	    			$("#div_"+i).append("<p>"+temp_obj.title+"</a><button onclick=getDetails('"+temp_obj._id+"')>Get Details</button></p>");
+	    		}
+	    	}
+
+	    	
+
+	    }
+	  });
+
+	};
+
+	var getDetails=function(idf)
+		{
+			console.log("getDetails",idf);
+			$.ajax({
+				    url : 'http://localhost:5984/bk/'+idf,
+				   	//data:{group: true},
+				   //url:'http://localhost:5984/bk/_design/ex/_view/pub?key=%22%20ACM%20Press%22&group=true',
+				    
+				    type : 'GET',
+				    dataType : "json",
+				    success : function(data1) {
+				    	console.log(data1);
+				    	/*_rev: "1-dc6bc09b2c6e5bb3ff600fb483ffe162"authors: Array[4]0: "Silvana Castano"1: "Maria Grazia Fugini"2: "Giancarlo Martella"3: "Pierangela Samarati"length: 4__proto__: Array[0]publisher: " ACM Press"source: "DBLP"title: "Database Security."type: "Book"year: "1995"*/			
+				    	var_rev=data1._rev;
+				    	var_id=data1._id;
+				    	$("#att_form").show();
+				    	$("#bibtex").empty();
+				    	$("#bibtex").append("<h2>"+data1.title+"</h2><div><p>Year:"+data1.year+"</p><p>Source:"+data1.source+"</p><p>Publisher:"+data1.publisher+"</p><p>type:"+data1.type+"</p></div>");
+				    	$("#bibtex").append("<h3>Authors:</h3><ul id='authors'></ul>");
+				    	for(x in data1.authors)
+				    	{
+				    		$("#authors").append("<li>"+data1.authors[x]+"</li>");
+				    	}
+				    	
+					}
+				});
+		}
+
+</script>
+</body>
+</html>
